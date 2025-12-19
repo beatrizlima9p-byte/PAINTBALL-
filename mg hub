@@ -1,0 +1,171 @@
+-- MG Hub - Server Hop Profissional
+-- Compatible with Delta Executor
+
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Config
+local Config = {
+    BrainrotThreshold = 10000000, -- 10M+
+    MaxPetValue = 70000000,       -- 70M
+    CheckInterval = 5,            -- segundos
+    ServerHopEnabled = false
+}
+
+-- GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MGHubServerHop"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = game.CoreGui
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 300, 0, 150)
+MainFrame.Position = UDim2.new(0, 20, 0, 20)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = MainFrame
+
+-- Header
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 40)
+Header.BackgroundColor3 = Color3.fromRGB(100, 60, 200)
+Header.BorderSizePixel = 0
+Header.Parent = MainFrame
+
+local HeaderCorner = Instance.new("UICorner")
+HeaderCorner.CornerRadius = UDim.new(0, 12)
+HeaderCorner.Parent = Header
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -40, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "MG Hub Server Hop"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.TextSize = 16
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Header
+
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0, 30, 0, 30)
+MinimizeBtn.Position = UDim2.new(1, -35, 0, 5)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(150, 100, 220)
+MinimizeBtn.Text = "-"
+MinimizeBtn.TextColor3 = Color3.new(1, 1, 1)
+MinimizeBtn.TextSize = 20
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.Parent = Header
+
+local MinimizeCorner = Instance.new("UICorner")
+MinimizeCorner.CornerRadius = UDim.new(0, 6)
+MinimizeCorner.Parent = MinimizeBtn
+
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(1, -20, 1, -50)
+ContentFrame.Position = UDim2.new(0, 10, 0, 45)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = MainFrame
+
+-- Status Label
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, 0, 0, 40)
+StatusLabel.Position = UDim2.new(0, 0, 0, 0)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "Server Hop: OFF"
+StatusLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+StatusLabel.TextSize = 14
+StatusLabel.Font = Enum.Font.GothamBold
+StatusLabel.TextWrapped = true
+StatusLabel.Parent = ContentFrame
+
+-- Toggle Button
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 120, 0, 40)
+ToggleBtn.Position = UDim2.new(0, 0, 0, 50)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+ToggleBtn.Text = "Ligar"
+ToggleBtn.TextColor3 = Color3.new(1, 1, 1)
+ToggleBtn.TextSize = 14
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.Parent = ContentFrame
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(0, 8)
+ToggleCorner.Parent = ToggleBtn
+
+-- Minimize functionality
+local isMinimized = false
+MinimizeBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    ContentFrame.Visible = not isMinimized
+    MainFrame.Size = isMinimized and UDim2.new(0, 180, 0, 40) or UDim2.new(0, 300, 0, 150)
+    MinimizeBtn.Text = isMinimized and "+" or "-"
+end)
+
+-- Toggle Server Hop
+ToggleBtn.MouseButton1Click:Connect(function()
+    Config.ServerHopEnabled = not Config.ServerHopEnabled
+    StatusLabel.Text = "Server Hop: " .. (Config.ServerHopEnabled and "ON" or "OFF")
+    ToggleBtn.Text = Config.ServerHopEnabled and "Desligar" or "Ligar"
+    ToggleBtn.BackgroundColor3 = Config.ServerHopEnabled and Color3.fromRGB(200, 50, 50) or Color3.fromRGB(50, 200, 50)
+end)
+
+-- Função para encontrar servidores
+local function FindServers()
+    local servers = {}
+    local page = 1
+    while true do
+        local success, body = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100&cursor="..(page > 1 and page or "")))
+        end)
+        if not success or not body or not body.data then break end
+
+        for _, server in pairs(body.data) do
+            if server.playing < server.maxPlayers and server.id ~= game.JobId then
+                table.insert(servers, server.id)
+            end
+        end
+
+        if not body.nextPageCursor then break end
+        page = page + 1
+    end
+    return servers
+end
+
+-- Loop Server Hop Automático
+task.spawn(function()
+    while true do
+        if Config.ServerHopEnabled then
+            local servers = FindServers()
+            if #servers > 0 then
+                local randomServer = servers[math.random(1, #servers)]
+                StatusLabel.Text = "Server Hop: Encontrado servidor " .. randomServer
+                print("Teleportando para servidor: "..randomServer)
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, randomServer, LocalPlayer)
+                break -- após teleport, o script continuará no novo servidor
+            else
+                StatusLabel.Text = "Server Hop: Nenhum servidor disponível"
+            end
+        end
+        task.wait(5)
+    end
+end)
+
+-- Persistência após teleport
+Players.PlayerAdded:Connect(function()
+    task.wait(1)
+    if Config.ServerHopEnabled then
+        print("Script reiniciado após teleport, Server Hop ON")
+    end
+end)
+
+print("MG Hub Server Hop Profissional carregado!")
